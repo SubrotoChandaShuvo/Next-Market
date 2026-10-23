@@ -8,7 +8,6 @@ import { useAuth } from '@/context/AuthContext';
 import { useProducts } from '@/context/ProductContext';
 import RouteGuard from '@/components/RouteGuard';
 import {
-  User as UserIcon,
   Mail,
   ShieldCheck,
   FolderKanban,

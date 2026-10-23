@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { Product, Category, FilterState } from '@/types';
+import type { Product, Category } from '@/types';
 
 export const INITIAL_CATEGORIES: Category[] = [
   {

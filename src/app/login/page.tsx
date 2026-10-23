@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -14,7 +14,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 
-export default function LoginPage() {
+function LoginContent() {
   const { signInWithEmail, signInWithGoogle, demoLogin } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -234,5 +234,21 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="auth-page-container" id="login-loading">
+          <div className="auth-card-box">
+            <div className="auth-skeleton-btn" style={{ width: '100%', height: '300px' }} />
+          </div>
+        </main>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }

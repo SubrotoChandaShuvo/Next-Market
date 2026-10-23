@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
@@ -9,16 +9,14 @@ import type { SortOption, FilterState } from '@/types';
 import {
   Search,
   Filter,
-  SlidersHorizontal,
   RotateCcw,
   Star,
-  Tag,
   PackageX,
   ArrowUpDown,
   Sparkles,
 } from 'lucide-react';
 
-export default function ProductsPage() {
+function ProductsContent() {
   const { products, isInitialized } = useProducts();
   const searchParams = useSearchParams();
 
@@ -375,5 +373,25 @@ export default function ProductsPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function ProductsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="products-explore-page" id="products-page-loading">
+          <div className="section-container">
+            <div className="loading-grid-state" role="status" aria-live="polite">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="product-skeleton-card" aria-hidden="true" />
+              ))}
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <ProductsContent />
+    </Suspense>
   );
 }

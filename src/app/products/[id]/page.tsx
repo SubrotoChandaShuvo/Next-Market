@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useProducts } from '@/context/ProductContext';
 import {
   ArrowLeft,
@@ -13,7 +13,6 @@ import {
   RotateCcw,
   CheckCircle2,
   PackageX,
-  Share2,
   Heart,
   ShoppingCart,
   UserCheck,
@@ -22,7 +21,6 @@ import {
 
 export default function ProductDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const { getProductById, isInitialized } = useProducts();
   const [addedToCart, setAddedToCart] = useState(false);
   const [isWishlisted, setIsWishlisted] = useState(false);
