@@ -5,7 +5,8 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut as firebaseSignOut,
   updateProfile,
   type User as FirebaseUser,
@@ -40,9 +41,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   });
 
   useEffect(() => {
-    // 1. First listen to real Firebase onAuthStateChanged
     let isSubscribed = true;
 
+    // 1. Handle Google redirect result (after signInWithRedirect returns)
+    getRedirectResult(auth)
+      .then((result) => {
+        if (!isSubscribed) return;
+        if (result?.user) {
+          const mapped = mapFirebaseUser(result.user);
+          setUser(mapped);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('getRedirectResult notice:', err?.message);
+      });
+
+    // 2. Listen to real Firebase onAuthStateChanged
     try {
       const unsubscribe = onAuthStateChanged(
         auth,
@@ -76,7 +93,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         },
         (error) => {
           console.warn('Firebase onAuthStateChanged notice (fallback mode active):', error.message);
-          // Fallback to local storage persistence
           if (typeof window !== 'undefined') {
             const localUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
             if (localUser) {
@@ -96,7 +112,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         unsubscribe();
       };
     } catch {
-      // If Firebase failed to attach listener
       if (typeof window !== 'undefined') {
         const localUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
         if (localUser) {
@@ -192,14 +207,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signInWithGoogle = async (): Promise<void> => {
-    setLoading(true);
     try {
-      const credential = await signInWithPopup(auth, googleProvider);
-      const mapped = mapFirebaseUser(credential.user);
-      setUser(mapped);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
-      }
+      // signInWithRedirect avoids popup-blocked errors in production browsers
+      await signInWithRedirect(auth, googleProvider);
+      // Page will redirect to Google and come back — getRedirectResult() in useEffect handles the result
     } catch (fbErr: unknown) {
       const authError = fbErr as { code?: string; message?: string };
       console.warn('Firebase Google Auth notice:', authError?.code || authError?.message);
@@ -211,6 +222,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
         process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('Dummy')
       ) {
+        // Fallback demo mode
         const mockUser: User = {
           uid: 'google_user_demo_123',
           email: 'alex.demo@example.com',
@@ -224,8 +236,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         throw fbErr;
       }
-    } finally {
-      setLoading(false);
     }
   };
 

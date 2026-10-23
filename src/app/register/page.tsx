@@ -70,14 +70,23 @@ function RegisterContent() {
     setErrorMsg(null);
     setIsSubmitting(true);
     try {
+      // signInWithRedirect navigates away to Google — no router.push needed.
       await signInWithGoogle();
-      router.push(redirectPath);
+      // For demo fallback mode, redirect manually
+      if (!window.location.href.includes('accounts.google.com')) {
+        router.push(redirectPath);
+      }
     } catch (err: unknown) {
       console.error('Google Sign-up error:', err);
-      const authErr = err as { message?: string };
-      setErrorMsg(authErr.message || 'Google account creation could not be completed.');
+      const authErr = err as { code?: string; message?: string };
+      if (authErr.code === 'auth/popup-blocked') {
+        setErrorMsg('Popup was blocked. Please allow popups for this site and try again.');
+      } else {
+        setErrorMsg(authErr.message || 'Google account creation could not be completed.');
+      }
     } finally {
       setIsSubmitting(false);
+
     }
   };
 

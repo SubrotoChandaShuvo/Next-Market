@@ -56,12 +56,22 @@ function LoginContent() {
     setErrorMsg(null);
     setIsSubmitting(true);
     try {
+      // signInWithRedirect will navigate away to Google — no router.push needed here.
+      // On return, getRedirectResult() in AuthContext captures the signed-in user.
       await signInWithGoogle();
-      router.push(redirectPath);
+      // If we reach here it means redirect was triggered (or demo fallback ran)
+      // For demo fallback, redirect manually
+      if (!window.location.href.includes('accounts.google.com')) {
+        router.push(redirectPath);
+      }
     } catch (err: unknown) {
       console.error('Google Sign-in error:', err);
-      const authErr = err as { message?: string };
-      setErrorMsg(authErr.message || 'Google sign-in could not be completed.');
+      const authErr = err as { code?: string; message?: string };
+      if (authErr.code === 'auth/popup-blocked') {
+        setErrorMsg('Popup was blocked. Please allow popups for this site and try again.');
+      } else {
+        setErrorMsg(authErr.message || 'Google sign-in could not be completed.');
+      }
     } finally {
       setIsSubmitting(false);
     }
