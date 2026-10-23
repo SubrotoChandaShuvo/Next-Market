@@ -11,7 +11,6 @@ import {
   User as UserIcon,
   ArrowRight,
   AlertCircle,
-  CheckCircle2,
 } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -52,14 +51,15 @@ export default function RegisterPage() {
     try {
       await signUpWithEmail(email.trim(), password, name.trim());
       router.push(redirectPath);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Registration error:', err);
-      if (err.code === 'auth/email-already-in-use') {
+      const authErr = err as { code?: string; message?: string };
+      if (authErr.code === 'auth/email-already-in-use') {
         setErrorMsg('This email address is already registered. Please sign in instead.');
-      } else if (err.code === 'auth/weak-password') {
+      } else if (authErr.code === 'auth/weak-password') {
         setErrorMsg('Password should be at least 6 characters.');
       } else {
-        setErrorMsg(err.message || 'An error occurred while creating your account.');
+        setErrorMsg(authErr.message || 'An error occurred while creating your account.');
       }
     } finally {
       setIsSubmitting(false);
@@ -72,9 +72,10 @@ export default function RegisterPage() {
     try {
       await signInWithGoogle();
       router.push(redirectPath);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Google Sign-up error:', err);
-      setErrorMsg(err.message || 'Google account creation could not be completed.');
+      const authErr = err as { message?: string };
+      setErrorMsg(authErr.message || 'Google account creation could not be completed.');
     } finally {
       setIsSubmitting(false);
     }

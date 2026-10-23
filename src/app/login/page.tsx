@@ -37,14 +37,15 @@ export default function LoginPage() {
     try {
       await signInWithEmail(email.trim(), password);
       router.push(redirectPath);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Login error:', err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+      const authErr = err as { code?: string; message?: string };
+      if (authErr.code === 'auth/invalid-credential' || authErr.code === 'auth/wrong-password') {
         setErrorMsg('Invalid email or password. Please verify and try again.');
-      } else if (err.code === 'auth/user-not-found') {
+      } else if (authErr.code === 'auth/user-not-found') {
         setErrorMsg('No user account found with this email. Please register first.');
       } else {
-        setErrorMsg(err.message || 'An error occurred while signing in. Please try again.');
+        setErrorMsg(authErr.message || 'An error occurred while signing in. Please try again.');
       }
     } finally {
       setIsSubmitting(false);
@@ -57,9 +58,10 @@ export default function LoginPage() {
     try {
       await signInWithGoogle();
       router.push(redirectPath);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Google Sign-in error:', err);
-      setErrorMsg(err.message || 'Google sign-in could not be completed.');
+      const authErr = err as { message?: string };
+      setErrorMsg(authErr.message || 'Google sign-in could not be completed.');
     } finally {
       setIsSubmitting(false);
     }
@@ -71,8 +73,9 @@ export default function LoginPage() {
     try {
       await demoLogin(role);
       router.push(redirectPath);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Demo login failed');
+    } catch (err: unknown) {
+      const authErr = err as { message?: string };
+      setErrorMsg(authErr.message || 'Demo login failed');
     } finally {
       setIsSubmitting(false);
     }

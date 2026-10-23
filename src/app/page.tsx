@@ -21,7 +21,6 @@ import {
   Watch,
   Camera,
   Layers,
-  ShoppingBag,
 } from 'lucide-react';
 
 export default function HomePage() {

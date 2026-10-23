@@ -7,11 +7,10 @@ import { useProducts } from '@/context/ProductContext';
 import RouteGuard from '@/components/RouteGuard';
 import {
   PlusCircle,
-  Image as ImageIcon,
+  ImageIcon,
   DollarSign,
   Tag,
   Layers,
-  FileText,
   Boxes,
   Sparkles,
   ArrowRight,

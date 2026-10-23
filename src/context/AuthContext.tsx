@@ -121,13 +121,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (typeof window !== 'undefined') {
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
       }
-    } catch (fbErr: any) {
-      console.warn('Firebase signIn notice:', fbErr?.code || fbErr?.message);
+    } catch (fbErr: unknown) {
+      const authError = fbErr as { code?: string; message?: string };
+      console.warn('Firebase signIn notice:', authError?.code || authError?.message);
       // Graceful fallback for mock/demo testing when API key is demo
       if (
-        fbErr?.code === 'auth/invalid-api-key' ||
-        fbErr?.code === 'auth/network-request-failed' ||
-        fbErr?.code === 'auth/api-key-not-valid' ||
+        authError?.code === 'auth/invalid-api-key' ||
+        authError?.code === 'auth/network-request-failed' ||
+        authError?.code === 'auth/api-key-not-valid' ||
         !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
         process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('Dummy')
       ) {
@@ -162,12 +163,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (typeof window !== 'undefined') {
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
       }
-    } catch (fbErr: any) {
-      console.warn('Firebase signUp notice:', fbErr?.code || fbErr?.message);
+    } catch (fbErr: unknown) {
+      const authError = fbErr as { code?: string; message?: string };
+      console.warn('Firebase signUp notice:', authError?.code || authError?.message);
       if (
-        fbErr?.code === 'auth/invalid-api-key' ||
-        fbErr?.code === 'auth/network-request-failed' ||
-        fbErr?.code === 'auth/api-key-not-valid' ||
+        authError?.code === 'auth/invalid-api-key' ||
+        authError?.code === 'auth/network-request-failed' ||
+        authError?.code === 'auth/api-key-not-valid' ||
         !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
         process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('Dummy')
       ) {
@@ -198,13 +200,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (typeof window !== 'undefined') {
         localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
       }
-    } catch (fbErr: any) {
-      console.warn('Firebase Google Auth notice:', fbErr?.code || fbErr?.message);
+    } catch (fbErr: unknown) {
+      const authError = fbErr as { code?: string; message?: string };
+      console.warn('Firebase Google Auth notice:', authError?.code || authError?.message);
       if (
-        fbErr?.code === 'auth/invalid-api-key' ||
-        fbErr?.code === 'auth/network-request-failed' ||
-        fbErr?.code === 'auth/api-key-not-valid' ||
-        fbErr?.code === 'auth/operation-not-allowed' ||
+        authError?.code === 'auth/invalid-api-key' ||
+        authError?.code === 'auth/network-request-failed' ||
+        authError?.code === 'auth/api-key-not-valid' ||
+        authError?.code === 'auth/operation-not-allowed' ||
         !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
         process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('Dummy')
       ) {
