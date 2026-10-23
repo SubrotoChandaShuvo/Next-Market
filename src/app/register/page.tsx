@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 function RegisterContent() {
-  const { signUpWithEmail, signInWithGoogle } = useAuth();
+  const { signUpWithEmail, signInWithGoogle, user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectPath = searchParams.get('redirect') || '/products';
@@ -25,6 +25,14 @@ function RegisterContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Auto-redirect authenticated users away from register page
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace(redirectPath);
+    }
+  }, [user, loading, router, redirectPath]);
+
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,20 +78,14 @@ function RegisterContent() {
     setErrorMsg(null);
     setIsSubmitting(true);
     try {
-      // signInWithRedirect navigates away to Google — no router.push needed.
       await signInWithGoogle();
-      // For demo fallback mode, redirect manually
-      if (!window.location.href.includes('accounts.google.com')) {
-        router.push(redirectPath);
-      }
+      router.push(redirectPath);
     } catch (err: unknown) {
-      console.error('Google Sign-up error:', err);
       const authErr = err as { code?: string; message?: string };
       if (authErr.code === 'auth/popup-blocked') {
-        setErrorMsg('Popup was blocked. Please allow popups for this site and try again.');
-      } else {
-        setErrorMsg(authErr.message || 'Google account creation could not be completed.');
+        return; // redirect flow initiated — page navigates away
       }
+      setErrorMsg(authErr.message || 'Google account creation could not be completed.');
     } finally {
       setIsSubmitting(false);
 

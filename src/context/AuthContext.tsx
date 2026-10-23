@@ -5,6 +5,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signOut as firebaseSignOut,
@@ -27,136 +28,149 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_USER_KEY = 'next_market_auth_user';
+const GOOGLE_REDIRECT_PENDING = 'next_market_google_redirect_pending';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Map Firebase User to our App User model
   const mapFirebaseUser = (fbUser: FirebaseUser): User => ({
     uid: fbUser.uid,
     email: fbUser.email,
     displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Member',
-    photoURL: fbUser.photoURL || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces`,
+    photoURL:
+      fbUser.photoURL ||
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
   });
+
+  const persistUser = (mapped: User) => {
+    setUser(mapped);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
+    }
+  };
 
   useEffect(() => {
     let isSubscribed = true;
+    let unsubscribeFn: (() => void) | undefined;
 
-    // 1. Handle Google redirect result (after signInWithRedirect returns)
-    getRedirectResult(auth)
-      .then((result) => {
-        if (!isSubscribed) return;
-        if (result?.user) {
-          const mapped = mapFirebaseUser(result.user);
-          setUser(mapped);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
-          }
+    const initialize = async () => {
+      // ── Step 1: Check for pending Google redirect ──────────────────────
+      // We only call getRedirectResult when we know a redirect was triggered,
+      // using a localStorage flag set before signInWithRedirect is called.
+      const hasPendingRedirect =
+        typeof window !== 'undefined' &&
+        localStorage.getItem(GOOGLE_REDIRECT_PENDING) === '1';
+
+      if (hasPendingRedirect) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(GOOGLE_REDIRECT_PENDING);
         }
-      })
-      .catch((err) => {
-        console.warn('getRedirectResult notice:', err?.message);
-      });
-
-    // 2. Listen to real Firebase onAuthStateChanged
-    try {
-      const unsubscribe = onAuthStateChanged(
-        auth,
-        (fbUser) => {
+        try {
+          const result = await getRedirectResult(auth);
           if (!isSubscribed) return;
-          if (fbUser) {
-            const mapped = mapFirebaseUser(fbUser);
-            setUser(mapped);
-            if (typeof window !== 'undefined') {
-              localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
-            }
-          } else {
-            // Check if there is a local persisted session (for mock / offline dev credentials)
-            if (typeof window !== 'undefined') {
-              const localUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-              if (localUser) {
-                try {
-                  setUser(JSON.parse(localUser));
-                } catch {
+          if (result?.user) {
+            persistUser(mapFirebaseUser(result.user));
+          }
+        } catch (err: unknown) {
+          const e = err as { message?: string };
+          console.warn('getRedirectResult error:', e?.message);
+        }
+      }
+
+      if (!isSubscribed) return;
+
+      // ── Step 2: Register ongoing auth state listener ───────────────────
+      try {
+        unsubscribeFn = onAuthStateChanged(
+          auth,
+          (fbUser) => {
+            if (!isSubscribed) return;
+            if (fbUser) {
+              persistUser(mapFirebaseUser(fbUser));
+            } else {
+              // Fallback: try localStorage (covers demo login & offline mode)
+              if (typeof window !== 'undefined') {
+                const stored = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+                if (stored) {
+                  try {
+                    setUser(JSON.parse(stored));
+                  } catch {
+                    setUser(null);
+                    localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+                  }
+                } else {
                   setUser(null);
-                  localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
                 }
               } else {
                 setUser(null);
               }
-            } else {
+            }
+            setLoading(false);
+          },
+          (error) => {
+            console.warn('onAuthStateChanged error:', error.message);
+            // Fallback to localStorage on Firebase error
+            if (typeof window !== 'undefined') {
+              const stored = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+              if (stored) {
+                try {
+                  setUser(JSON.parse(stored));
+                } catch {
+                  setUser(null);
+                }
+              }
+            }
+            setLoading(false);
+          }
+        );
+      } catch {
+        // Firebase init failed — use localStorage
+        if (typeof window !== 'undefined') {
+          const stored = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+          if (stored) {
+            try {
+              setUser(JSON.parse(stored));
+            } catch {
               setUser(null);
             }
           }
-          setLoading(false);
-        },
-        (error) => {
-          console.warn('Firebase onAuthStateChanged notice (fallback mode active):', error.message);
-          if (typeof window !== 'undefined') {
-            const localUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-            if (localUser) {
-              try {
-                setUser(JSON.parse(localUser));
-              } catch {
-                setUser(null);
-              }
-            }
-          }
-          setLoading(false);
         }
-      );
-
-      return () => {
-        isSubscribed = false;
-        unsubscribe();
-      };
-    } catch {
-      if (typeof window !== 'undefined') {
-        const localUser = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-        if (localUser) {
-          try {
-            setUser(JSON.parse(localUser));
-          } catch {
-            setUser(null);
-          }
-        }
+        setLoading(false);
       }
-      setLoading(false);
-    }
+    };
+
+    initialize();
+
+    return () => {
+      isSubscribed = false;
+      unsubscribeFn?.();
+    };
   }, []);
 
+  // ── Email Sign In ──────────────────────────────────────────────────────
   const signInWithEmail = async (email: string, pass: string): Promise<void> => {
     setLoading(true);
     try {
-      // Try Firebase real auth first
       const credential = await signInWithEmailAndPassword(auth, email, pass);
-      const mapped = mapFirebaseUser(credential.user);
-      setUser(mapped);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
-      }
+      persistUser(mapFirebaseUser(credential.user));
     } catch (fbErr: unknown) {
       const authError = fbErr as { code?: string; message?: string };
-      console.warn('Firebase signIn notice:', authError?.code || authError?.message);
-      // Graceful fallback for mock/demo testing when API key is demo
+      const isDemoKey =
+        !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
+        process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('Dummy');
       if (
         authError?.code === 'auth/invalid-api-key' ||
         authError?.code === 'auth/network-request-failed' ||
-        authError?.code === 'auth/api-key-not-valid' ||
-        !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
-        process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('Dummy')
+        isDemoKey
       ) {
-        const mockUser: User = {
-          uid: 'user_' + Math.random().toString(36).substring(2, 9),
+        persistUser({
+          uid: 'demo_' + Math.random().toString(36).substring(2, 9),
           email,
           displayName: email.split('@')[0],
-          photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
-        };
-        setUser(mockUser);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mockUser));
-        }
+          photoURL:
+            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+        });
       } else {
         throw fbErr;
       }
@@ -165,39 +179,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signUpWithEmail = async (email: string, pass: string, displayName: string): Promise<void> => {
+  // ── Email Sign Up ──────────────────────────────────────────────────────
+  const signUpWithEmail = async (
+    email: string,
+    pass: string,
+    displayName: string
+  ): Promise<void> => {
     setLoading(true);
     try {
       const credential = await createUserWithEmailAndPassword(auth, email, pass);
-      if (displayName) {
-        await updateProfile(credential.user, { displayName });
-      }
+      if (displayName) await updateProfile(credential.user, { displayName });
       const mapped = mapFirebaseUser(credential.user);
       mapped.displayName = displayName || mapped.displayName;
-      setUser(mapped);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mapped));
-      }
+      persistUser(mapped);
     } catch (fbErr: unknown) {
       const authError = fbErr as { code?: string; message?: string };
-      console.warn('Firebase signUp notice:', authError?.code || authError?.message);
+      const isDemoKey =
+        !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
+        process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('Dummy');
       if (
         authError?.code === 'auth/invalid-api-key' ||
         authError?.code === 'auth/network-request-failed' ||
-        authError?.code === 'auth/api-key-not-valid' ||
-        !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
-        process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('Dummy')
+        isDemoKey
       ) {
-        const mockUser: User = {
-          uid: 'user_' + Math.random().toString(36).substring(2, 9),
+        persistUser({
+          uid: 'demo_' + Math.random().toString(36).substring(2, 9),
           email,
           displayName: displayName || email.split('@')[0],
-          photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
-        };
-        setUser(mockUser);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mockUser));
-        }
+          photoURL:
+            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+        });
       } else {
         throw fbErr;
       }
@@ -206,42 +217,56 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // ── Google Sign In ─────────────────────────────────────────────────────
   const signInWithGoogle = async (): Promise<void> => {
+    setLoading(true);
     try {
-      // signInWithRedirect avoids popup-blocked errors in production browsers
-      await signInWithRedirect(auth, googleProvider);
-      // Page will redirect to Google and come back — getRedirectResult() in useEffect handles the result
+      // Primary: signInWithPopup (instant, works when not blocked)
+      const credential = await signInWithPopup(auth, googleProvider);
+      persistUser(mapFirebaseUser(credential.user));
     } catch (fbErr: unknown) {
       const authError = fbErr as { code?: string; message?: string };
-      console.warn('Firebase Google Auth notice:', authError?.code || authError?.message);
+
       if (
-        authError?.code === 'auth/invalid-api-key' ||
-        authError?.code === 'auth/network-request-failed' ||
-        authError?.code === 'auth/api-key-not-valid' ||
+        authError?.code === 'auth/popup-blocked' ||
+        authError?.code === 'auth/popup-closed-by-user'
+      ) {
+        // Fallback: redirect flow when popup is blocked
+        // Set a flag so getRedirectResult knows to check on return
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(GOOGLE_REDIRECT_PENDING, '1');
+        }
+        // This navigates away — no code runs after this line
+        await signInWithRedirect(auth, googleProvider);
+        return; // unreachable, but satisfies TS
+      }
+
+      if (
         authError?.code === 'auth/operation-not-allowed' ||
+        authError?.code === 'auth/invalid-api-key' ||
         !process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
         process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes('Dummy')
       ) {
-        // Fallback demo mode
-        const mockUser: User = {
-          uid: 'google_user_demo_123',
+        // Demo fallback
+        persistUser({
+          uid: 'google_demo_123',
           email: 'alex.demo@example.com',
           displayName: 'Alex Demo',
-          photoURL: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=faces',
-        };
-        setUser(mockUser);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mockUser));
-        }
+          photoURL:
+            'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=faces',
+        });
       } else {
         throw fbErr;
       }
+    } finally {
+      setLoading(false);
     }
   };
 
+  // ── Demo Login ─────────────────────────────────────────────────────────
   const demoLogin = async (role: 'seller' | 'buyer' = 'seller'): Promise<void> => {
     setLoading(true);
-    const mockUser: User = {
+    persistUser({
       uid: role === 'seller' ? 'seller_subroto_001' : 'buyer_jordan_002',
       email: role === 'seller' ? 'subroto@nextmarket.com' : 'jordan@nextmarket.com',
       displayName: role === 'seller' ? 'Subroto Chanda' : 'Jordan Lee',
@@ -249,37 +274,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         role === 'seller'
           ? 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=faces'
           : 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=faces',
-    };
-    setUser(mockUser);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(mockUser));
-    }
+    });
     setLoading(false);
   };
 
+  // ── Logout ─────────────────────────────────────────────────────────────
   const logout = async (): Promise<void> => {
     try {
       await firebaseSignOut(auth);
     } catch {
-      // Ignored
+      // ignored
     }
     setUser(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+      localStorage.removeItem(GOOGLE_REDIRECT_PENDING);
     }
   };
 
   return (
     <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        signInWithEmail,
-        signUpWithEmail,
-        signInWithGoogle,
-        logout,
-        demoLogin,
-      }}
+      value={{ user, loading, signInWithEmail, signUpWithEmail, signInWithGoogle, logout, demoLogin }}
     >
       {children}
     </AuthContext.Provider>
@@ -288,8 +303,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

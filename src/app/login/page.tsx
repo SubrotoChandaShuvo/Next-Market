@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 function LoginContent() {
-  const { signInWithEmail, signInWithGoogle, demoLogin } = useAuth();
+  const { signInWithEmail, signInWithGoogle, demoLogin, user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectPath = searchParams.get('redirect') || '/products';
@@ -24,6 +24,14 @@ function LoginContent() {
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Auto-redirect: if user is already authenticated (e.g. after Google redirect returns),
+  // send them to their destination immediately.
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace(redirectPath);
+    }
+  }, [user, loading, router, redirectPath]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,22 +64,18 @@ function LoginContent() {
     setErrorMsg(null);
     setIsSubmitting(true);
     try {
-      // signInWithRedirect will navigate away to Google — no router.push needed here.
-      // On return, getRedirectResult() in AuthContext captures the signed-in user.
+      // signInWithPopup: resolves immediately with user → then router.push runs
+      // signInWithRedirect (fallback if popup blocked): navigates away, page reloads on return,
+      // auto-redirect useEffect below handles navigation on return.
       await signInWithGoogle();
-      // If we reach here it means redirect was triggered (or demo fallback ran)
-      // For demo fallback, redirect manually
-      if (!window.location.href.includes('accounts.google.com')) {
-        router.push(redirectPath);
-      }
+      router.push(redirectPath);
     } catch (err: unknown) {
-      console.error('Google Sign-in error:', err);
       const authErr = err as { code?: string; message?: string };
       if (authErr.code === 'auth/popup-blocked') {
-        setErrorMsg('Popup was blocked. Please allow popups for this site and try again.');
-      } else {
-        setErrorMsg(authErr.message || 'Google sign-in could not be completed.');
+        // Redirect flow initiated — page will navigate away, no error to show
+        return;
       }
+      setErrorMsg(authErr.message || 'Google sign-in could not be completed.');
     } finally {
       setIsSubmitting(false);
     }
